@@ -4,7 +4,7 @@
 
 Name:           couchdb
 Version:        1.1.1
-Release:        8%{?dist}
+Release:        2%{?dist}
 Summary:        A document database server, accessible via a RESTful JSON API
 
 Group:          Applications/Databases
@@ -12,22 +12,16 @@ License:        ASL 2.0
 URL:            http://couchdb.apache.org/
 Source0:        http://www.apache.org/dist/%{name}/%{version}/apache-%{name}-%{version}.tar.gz
 Source1:        %{name}.init
+Source2:        %{name}.service
 Patch1:		couchdb-0001-Do-not-gzip-doc-files-and-do-not-install-installatio.patch
 Patch2:		couchdb-0002-Install-docs-into-versioned-directory.patch
 Patch3:		couchdb-0003-More-directories-to-search-for-place-for-init-script.patch
 Patch4:		couchdb-0004-Install-into-erllibdir-by-default.patch
-#Patch5:		couchdb-0005-Don-t-use-bundled-etap-erlang-oauth-ibrowse-and-moch.patch
-#Patch6:		couchdb-0006-Fixes-for-system-wide-ibrowse.patch
+Patch5:		couchdb-0005-Don-t-use-bundled-etap-erlang-oauth-ibrowse-and-moch.patch
+Patch6:		couchdb-0006-Fixes-for-system-wide-ibrowse.patch
 Patch7:		couchdb-0007-Remove-pid-file-after-stop.patch
-#Patch8:		couchdb-0008-deleting-a-DB-while-it-was-being-opened-would-crash-.patch
-Patch9:		couchdb-0009-Change-respawn-timeout-to-0.patch
-Patch10:	couchdb-0010-Relax-curl-dependency-to-7.15-for-RHEL5.patch
-Patch11:	couchdb-0011-Added-Spidermonkey-1.8.5-patch.patch
-Patch12:	couchdb-0012-Replicator-fix-error-when-restarting-replications-in.patch
-#Patch13:	couchdb-0013-Fix-for-ibrowse-2.2.0.patch
-Patch14:	couchdb-0014-Fix-for-js-1.8.5.patch
-
-Patch99:	couchdb-9999-Autoreconf.patch
+Patch8:		couchdb-0008-Change-respawn-timeout-to-0.patch
+Patch9:		couchdb-0009-Replicator-fix-error-when-restarting-replications-in.patch
 
 BuildRoot:      %{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n)
 
@@ -35,8 +29,8 @@ BuildRoot:      %{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n)
 BuildRequires:  autoconf
 BuildRequires:  automake
 BuildRequires:  libtool
-BuildRequires:	curl-devel
-BuildRequires:	erlang-erts
+BuildRequires:	curl-devel >= 7.18.0
+Requires:	erlang-erts >= R13B
 BuildRequires:	erlang-etap
 BuildRequires:	erlang-ibrowse >= 2.2.0
 BuildRequires:	erlang-mochiweb
@@ -48,7 +42,7 @@ BuildRequires:	libicu-devel
 BuildRequires:	perl(Test::Harness)
 
 Requires:	erlang-crypto
-Requires:	erlang-erts
+Requires:	erlang-erts >= R13B
 Requires:	erlang-ibrowse >= 2.2.0
 Requires:	erlang-inets
 Requires:	erlang-kernel
@@ -59,8 +53,14 @@ Requires:	erlang-stdlib
 Requires:	erlang-tools
 
 #Initscripts
+%if 0%{?fc17}%{?fc18}
+Requires(post): systemd-units
+Requires(preun): systemd-units
+Requires(postun): systemd-units
+%else
 Requires(post): chkconfig
 Requires(preun): chkconfig initscripts
+%endif
 
 # Users and groups
 Requires(pre): shadow-utils
@@ -81,40 +81,21 @@ JavaScript acting as the default view definition language.
 %patch2 -p1 -b .use_versioned_docdir
 %patch3 -p1 -b .more_init_dirs
 %patch4 -p1 -b .install_into_erldir
-#%patch5 -p1 -b .remove_bundled_libs
-#%patch6 -p1 -b .workaround_for_system_wide_ibrowse
+%patch5 -p1 -b .remove_bundled_libs
+%patch6 -p1 -b .workaround_for_system_wide_ibrowse
 %patch7 -p1 -b .remove_pid_file
-#%patch8 -p1 -b .fix_crash
-%patch9 -p1 -b .fix_respawn
-%if 0%{?el5}
-# Old CURL library
-%patch10 -p1 -b .curl_7_15
-%endif
-%patch12 -p1 -b .fix_R14B02
-#%patch13 -p1 -b .ibrowse_2_2_0
-# JS 1.8.5
-%if 0%{?fc15}%{?fc16}
-%patch11 -p1 -b .to_new_js
-%patch14 -p1 -b .to_new_js_again
-%endif
+%patch8 -p1 -b .fix_respawn
+%patch9 -p1 -b .fix_R14B02
 
 # Remove bundled libraries
-#rm -rf src/erlang-oauth
-#rm -rf src/etap
-#rm -rf src/ibrowse
-#rm -rf src/mochiweb
+rm -rf src/erlang-oauth
+rm -rf src/etap
+rm -rf src/ibrowse
+rm -rf src/mochiweb
 
-%if 0%{?el5}
-# ugly hack to overcome limitations of outdated autotools in EL-5
-%patch99 -p1 -b .autoreconf
-%endif
 
 %build
-%if 0%{?el5}
-echo "no need to reconfigure on EL-5, see patch 99"
-%else
 autoreconf -ivf
-%endif
 %configure --enable-js-trunk
 make %{?_smp_mflags}
 
@@ -124,13 +105,18 @@ rm -rf $RPM_BUILD_ROOT
 make install DESTDIR=$RPM_BUILD_ROOT
 
 # Install our custom couchdb initscript
+%if 0%{?fc17}%{?fc18}
+install -D -m 755 %{SOURCE2} $RPM_BUILD_ROOT%{_unitdir}/%{name}.service
+rm -rf $RPM_BUILD_ROOT/%{_sysconfdir}/rc.d/
+%else
 install -D -m 755 %{SOURCE1} $RPM_BUILD_ROOT%{_initrddir}/%{name}
+%endif
 
 # Use /etc/sysconfig instead of /etc/default
 mv $RPM_BUILD_ROOT%{_sysconfdir}/{default,sysconfig}
 
 # create /etc/tmpfiles.d entry
-%if 0%{?fc15}%{?fc16}
+%if 0%{?fc15}%{?fc16}%{?fc17}%{?fc18}
 install -d $RPM_BUILD_ROOT%{_sysconfdir}/tmpfiles.d
 echo "d /var/run/couchdb 0755 %{couchdb_user} root" > $RPM_BUILD_ROOT%{_sysconfdir}/tmpfiles.d/%{name}.conf
 %endif
@@ -153,14 +139,53 @@ exit 0
 
 
 %post
+%if 0%{?fc17}%{?fc18}
+if [ $1 -eq 1 ] ; then 
+    # Initial installation 
+    /bin/systemctl daemon-reload >/dev/null 2>&1 || :
+fi
+%else
 /sbin/chkconfig --add couchdb
+%endif
 
 
 %preun
+%if 0%{?fc17}%{?fc18}
+if [ $1 -eq 0 ] ; then
+    # Package removal, not upgrade
+    /bin/systemctl --no-reload disable couchdb.service > /dev/null 2>&1 || :
+    /bin/systemctl stop couchdb.service > /dev/null 2>&1 || :
+fi
+%else
 if [ $1 = 0 ] ; then
     /sbin/service couchdb stop >/dev/null 2>&1
     /sbin/chkconfig --del couchdb
 fi
+%endif
+
+
+%postun
+%if 0%{?fc17}%{?fc18}
+/bin/systemctl daemon-reload >/dev/null 2>&1 || :
+if [ $1 -ge 1 ] ; then
+    # Package upgrade, not uninstall
+    /bin/systemctl try-restart couchdb.service >/dev/null 2>&1 || :
+fi
+%endif
+
+
+%if 0%{?fc17}%{?fc18}
+%triggerun -- couchdb < 1.0.3-5
+# Save the current service runlevel info
+# User must manually run systemd-sysv-convert --apply httpd
+# to migrate them to systemd targets
+/usr/bin/systemd-sysv-convert --save couchdb >/dev/null 2>&1 ||:
+
+# Run these because the SysV package being removed won't do them
+/sbin/chkconfig --del couchdb >/dev/null 2>&1 || :
+/bin/systemctl try-restart couchdb.service >/dev/null 2>&1 || :
+%endif
+
 
 
 %files
@@ -173,16 +198,16 @@ fi
 %config(noreplace) %attr(0644, %{couchdb_user}, root) %{_sysconfdir}/%{name}/local.ini
 %config(noreplace) %{_sysconfdir}/sysconfig/%{name}
 %config(noreplace) %{_sysconfdir}/logrotate.d/%{name}
-%if 0%{?fc15}%{?fc16}
+%if 0%{?fc15}%{?fc16}%{?fc17}%{?fc18}
 %{_sysconfdir}/tmpfiles.d/%{name}.conf
 %endif
+%if 0%{?fc17}%{?fc18}
+%{_unitdir}/%{name}.service
+%else
 %{_initrddir}/%{name}
+%endif
 %{_bindir}/%{name}
 %{_bindir}/couchjs
-%{_libdir}/erlang/lib/mochiweb-7c2bc2
-%{_libdir}/erlang/lib/ibrowse-2.2.0
-%{_libdir}/erlang/lib/etap
-%{_libdir}/erlang/lib/erlang-oauth
 %{_libdir}/erlang/lib/couch-%{version}
 %{_datadir}/%{name}
 %{_mandir}/man1/%{name}.1.*
@@ -193,6 +218,27 @@ fi
 
 
 %changelog
+* Sun Mar 11 2012 Peter Lemenkov <lemenkov@gmail.com> - 1.1.1-1
+- Ver. 1.1.1
+
+* Sun Mar 11 2012 Peter Lemenkov <lemenkov@gmail.com> - 1.0.3-6
+- Fix building on f18
+
+* Wed Feb 15 2012 Jon Ciesla <limburgher@gmail.com> - 1.0.3-5
+- Migrate to systemd, BZ 771434.
+
+* Thu Jan 12 2012 Fedora Release Engineering <rel-eng@lists.fedoraproject.org> - 1.0.3-4
+- Rebuilt for https://fedoraproject.org/wiki/Fedora_17_Mass_Rebuild
+
+* Mon Sep 19 2011 Peter Lemenkov <lemenkov@gmail.com> - 1.0.3-3
+- Rebuilt with new libicu
+
+* Mon Aug 15 2011 Kalev Lember <kalevlember@gmail.com> - 1.0.3-2
+- Rebuilt for rpm bug #728707
+
+* Thu Jul 21 2011 Peter Lemenkov <lemenkov@gmail.com> - 1.0.3-1
+- Ver. 1.0.3
+
 * Tue Jul 12 2011 Peter Lemenkov <lemenkov@gmail.com> - 1.0.2-8
 - Build for EL-5 (see patch99 - quite ugly, I know)
 
